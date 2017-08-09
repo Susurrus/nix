@@ -7,15 +7,15 @@ use std::os::unix::io::RawFd;
 pub use self::consts::*;
 
 libc_bitflags!{
-    pub flags ProtFlags: libc::c_int {
-        PROT_NONE,
-        PROT_READ,
-        PROT_WRITE,
-        PROT_EXEC,
+    pub struct ProtFlags: libc::c_int {
+        PROT_NONE;
+        PROT_READ;
+        PROT_WRITE;
+        PROT_EXEC;
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        PROT_GROWSDOWN,
+        PROT_GROWSDOWN;
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        PROT_GROWSUP,
+        PROT_GROWSUP;
     }
 }
 
@@ -24,24 +24,24 @@ mod consts {
     use libc::{self, c_int};
 
     libc_bitflags!{
-        pub flags MapFlags: c_int {
-            MAP_FILE,
-            MAP_SHARED,
-            MAP_PRIVATE,
-            MAP_FIXED,
-            MAP_ANON,
-            MAP_ANONYMOUS,
+        pub struct MapFlags: c_int {
+            MAP_FILE;
+            MAP_SHARED;
+            MAP_PRIVATE;
+            MAP_FIXED;
+            MAP_ANON;
+            MAP_ANONYMOUS;
             #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-            MAP_32BIT,
-            MAP_GROWSDOWN,
-            MAP_DENYWRITE,
-            MAP_EXECUTABLE,
-            MAP_LOCKED,
-            MAP_NORESERVE,
-            MAP_POPULATE,
-            MAP_NONBLOCK,
-            MAP_STACK,
-            MAP_HUGETLB,
+            MAP_32BIT;
+            MAP_GROWSDOWN;
+            MAP_DENYWRITE;
+            MAP_EXECUTABLE;
+            MAP_LOCKED;
+            MAP_NORESERVE;
+            MAP_POPULATE;
+            MAP_NONBLOCK;
+            MAP_STACK;
+            MAP_HUGETLB;
         }
     }
 
@@ -65,10 +65,10 @@ mod consts {
 
 
     libc_bitflags!{
-        pub flags MsFlags: c_int {
-            MS_ASYNC,
-            MS_INVALIDATE,
-            MS_SYNC,
+        pub struct MsFlags: c_int {
+            MS_ASYNC;
+            MS_INVALIDATE;
+            MS_SYNC;
         }
     }
 
@@ -81,14 +81,14 @@ mod consts {
     use libc::{self, c_int};
 
     libc_bitflags!{
-        pub flags MapFlags: c_int {
-            MAP_FILE,
-            MAP_SHARED,
-            MAP_PRIVATE,
-            MAP_FIXED,
-            MAP_ANON,
-            MAP_NOCACHE,
-            MAP_JIT,
+        pub struct MapFlags: c_int {
+            MAP_FILE;
+            MAP_SHARED;
+            MAP_PRIVATE;
+            MAP_FIXED;
+            MAP_ANON;
+            MAP_NOCACHE;
+            MAP_JIT;
         }
     }
 
@@ -106,12 +106,12 @@ mod consts {
     pub const MADV_CAN_REUSE : MmapAdvise       = 9;
 
     libc_bitflags!{
-        pub flags MsFlags: c_int {
-            MS_ASYNC, /* [MF|SIO] return immediately */
-            MS_INVALIDATE, /* [MF|SIO] invalidate all cached data */
-            MS_KILLPAGES, /* invalidate pages, leave mapped */
-            MS_DEACTIVATE, /* deactivate pages, leave mapped */
-            MS_SYNC, /* [MF|SIO] msync synchronously */
+        pub struct MsFlags: c_int {
+            MS_ASYNC; /* [MF|SIO] return immediately */
+            MS_INVALIDATE; /* [MF|SIO] invalidate all cached data */
+            MS_KILLPAGES; /* invalidate pages, leave mapped */
+            MS_DEACTIVATE; /* deactivate pages, leave mapped */
+            MS_SYNC; /* [MF|SIO] msync synchronously */
         }
     }
 
@@ -123,21 +123,21 @@ mod consts {
     use libc::{self, c_int};
 
     libc_bitflags!{
-        pub flags MapFlags: c_int {
-            MAP_FILE,
-            MAP_SHARED,
-            MAP_PRIVATE,
-            MAP_FIXED,
-            MAP_RENAME,
-            MAP_NORESERVE,
-            MAP_HASSEMAPHORE,
+        pub struct MapFlags: c_int {
+            MAP_FILE;
+            MAP_SHARED;
+            MAP_PRIVATE;
+            MAP_FIXED;
+            MAP_RENAME;
+            MAP_NORESERVE;
+            MAP_HASSEMAPHORE;
             #[cfg(not(any(target_os = "openbsd", target_os = "netbsd")))]
-            MAP_STACK,
+            MAP_STACK;
             #[cfg(target_os = "netbsd")]
-            MAP_WIRED,
+            MAP_WIRED;
             #[cfg(any(target_os = "freebsd", target_os = "dragonfly"))]
-            MAP_NOSYNC,
-            MAP_ANON,
+            MAP_NOSYNC;
+            MAP_ANON;
         }
     }
 
