@@ -4,14 +4,6 @@ use unistd::Pid;
 
 use sys::signal::Signal;
 
-mod ffi {
-    use libc::{pid_t, c_int};
-
-    extern {
-        pub fn waitpid(pid: pid_t, status: *mut c_int, options: c_int) -> pid_t;
-    }
-}
-
 #[cfg(not(any(target_os = "linux",
               target_os = "android")))]
 libc_bitflags!(
@@ -299,7 +291,7 @@ pub fn waitpid<P: Into<Option<Pid>>>(pid: P, options: Option<WaitPidFlag>) -> Re
         None => 0
     };
 
-    let res = unsafe { ffi::waitpid(pid.into().unwrap_or(Pid::from_raw(-1)).into(), &mut status as *mut c_int, option_bits) };
+    let res = unsafe { libc::waitpid(pid.into().unwrap_or(Pid::from_raw(-1)).into(), &mut status as *mut c_int, option_bits) };
 
     Ok(match try!(Errno::result(res)) {
         0 => StillAlive,
