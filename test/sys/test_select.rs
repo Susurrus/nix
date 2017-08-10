@@ -7,7 +7,7 @@ fn test_fdset() {
     let mut fd_set = FdSet::new();
 
     for i in 0..FD_SETSIZE {
-        assert!(!fd_set.contains(i));
+        assert!(!fd_set.contains(i as i32));
     }
 
     fd_set.insert(7);
@@ -17,17 +17,17 @@ fn test_fdset() {
     fd_set.remove(7);
 
     for i in 0..FD_SETSIZE {
-        assert!(!fd_set.contains(i));
+        assert!(!fd_set.contains(i as i32));
     }
 
     fd_set.insert(1);
-    fd_set.insert(FD_SETSIZE / 2);
-    fd_set.insert(FD_SETSIZE - 1);
+    fd_set.insert(FD_SETSIZE as i32 / 2);
+    fd_set.insert(FD_SETSIZE as i32 - 1);
 
     fd_set.clear();
 
     for i in 0..FD_SETSIZE {
-        assert!(!fd_set.contains(i));
+        assert!(!fd_set.contains(i as i32));
     }
 }
 
