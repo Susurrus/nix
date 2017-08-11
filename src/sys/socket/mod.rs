@@ -9,7 +9,6 @@ use std::os::unix::io::RawFd;
 use sys::uio::IoVec;
 
 mod addr;
-mod ffi;
 mod multicast;
 pub mod sockopt;
 
@@ -199,7 +198,24 @@ unsafe fn copy_bytes<'a, 'b, T: ?Sized>(src: &T, dst: &'a mut &'b mut [u8]) {
 }
 
 
-use self::ffi::{cmsghdr, msghdr, type_of_cmsg_data, type_of_msg_iovlen, type_of_cmsg_len};
+#[cfg(target_os = "linux")]
+type type_of_cmsg_len = libc::size_t;
+
+#[cfg(not(target_os = "linux"))]
+type type_of_cmsg_len = libc::socklen_t;
+
+// OSX always aligns struct cmsghdr as if it were a 32-bit OS
+#[cfg(target_os = "macos")]
+pub type type_of_cmsg_data = libc::c_uint;
+
+#[cfg(not(target_os = "macos"))]
+pub type type_of_cmsg_data = libc::size_t;
+
+#[cfg(target_os = "linux")]
+type type_of_msg_iovlen = libc::size_t;
+
+#[cfg(not(target_os = "linux"))]
+type type_of_msg_iovlen = libc::c_uint;
 
 /// A structure used to make room in a cmsghdr passed to recvmsg. The
 /// size and alignment match that of a cmsghdr followed by a T, but the
@@ -210,7 +226,7 @@ use self::ffi::{cmsghdr, msghdr, type_of_cmsg_data, type_of_msg_iovlen, type_of_
 /// tuples, e.g.
 /// `let cmsg: CmsgSpace<([RawFd; 3], CmsgSpace<[RawFd; 2]>)> = CmsgSpace::new();`
 pub struct CmsgSpace<T> {
-    _hdr: cmsghdr,
+    _hdr: libc::cmsghdr,
     _data: T,
 }
 
@@ -254,11 +270,11 @@ impl<'a> Iterator for CmsgIterator<'a> {
     // although we handle the invariants in slightly different places to
     // get a better iterator interface.
     fn next(&mut self) -> Option<ControlMessage<'a>> {
-        let sizeof_cmsghdr = mem::size_of::<cmsghdr>();
+        let sizeof_cmsghdr = mem::size_of::<libc::cmsghdr>();
         if self.buf.len() < sizeof_cmsghdr {
             return None;
         }
-        let cmsg: &cmsghdr = unsafe { mem::transmute(self.buf.as_ptr()) };
+        let cmsg: &libc::cmsghdr = unsafe { mem::transmute(self.buf.as_ptr()) };
 
         // This check is only in the glibc implementation of CMSG_NXTHDR
         // (although it claims the kernel header checks this), but such
@@ -315,7 +331,7 @@ pub enum ControlMessage<'a> {
 
 // An opaque structure used to prevent cmsghdr from being a public type
 #[doc(hidden)]
-pub struct UnknownCmsg<'a>(&'a cmsghdr, &'a [u8]);
+pub struct UnknownCmsg<'a>(&'a libc::cmsghdr, &'a [u8]);
 
 fn cmsg_align(len: usize) -> usize {
     let align_bytes = mem::size_of::<type_of_cmsg_data>() - 1;
@@ -330,7 +346,7 @@ impl<'a> ControlMessage<'a> {
 
     /// The value of CMSG_LEN on this message.
     fn len(&self) -> usize {
-        cmsg_align(mem::size_of::<cmsghdr>()) + match *self {
+        cmsg_align(mem::size_of::<libc::cmsghdr>()) + match *self {
             ControlMessage::ScmRights(fds) => {
                 mem::size_of_val(fds)
             },
@@ -346,7 +362,7 @@ impl<'a> ControlMessage<'a> {
     unsafe fn encode_into<'b>(&self, buf: &mut &'b mut [u8]) {
         match *self {
             ControlMessage::ScmRights(fds) => {
-                let cmsg = cmsghdr {
+                let cmsg = libc::cmsghdr {
                     cmsg_len: self.len() as type_of_cmsg_len,
                     cmsg_level: libc::SOL_SOCKET,
                     cmsg_type: libc::SCM_RIGHTS,
@@ -404,22 +420,22 @@ pub fn sendmsg<'a>(fd: RawFd, iov: &[IoVec<&'a [u8]>], cmsgs: &[ControlMessage<'
         None => (0 as *const _, 0),
     };
 
-    let cmsg_ptr = if capacity > 0 {
-        cmsg_buffer.as_ptr() as *const c_void
+    let mut cmsg_ptr = if capacity > 0 {
+        cmsg_buffer.as_mut_ptr() as *mut c_void
     } else {
-        ptr::null()
+        ptr::null_mut()
     };
 
-    let mhdr = msghdr {
-        msg_name: name as *const c_void,
+    let mhdr = libc::msghdr {
+        msg_name: name as *mut c_void,
         msg_namelen: namelen,
-        msg_iov: iov.as_ptr(),
+        msg_iov: iov.as_mut_ptr(),
         msg_iovlen: iov.len() as type_of_msg_iovlen,
         msg_control: cmsg_ptr,
         msg_controllen: capacity as type_of_cmsg_len,
         msg_flags: 0,
     };
-    let ret = unsafe { ffi::sendmsg(fd, &mhdr, flags.bits()) };
+    let ret = unsafe { libc::sendmsg(fd, &mhdr, flags.bits()) };
 
     Errno::result(ret).map(|r| r as usize)
 }
@@ -433,16 +449,16 @@ pub fn recvmsg<'a, T>(fd: RawFd, iov: &[IoVec<&mut [u8]>], cmsg_buffer: Option<&
         Some(cmsg_buffer) => (cmsg_buffer as *mut _, mem::size_of_val(cmsg_buffer)),
         None => (0 as *mut _, 0),
     };
-    let mut mhdr = msghdr {
-        msg_name: &mut address as *const _ as *const c_void,
+    let mut mhdr = libc::msghdr {
+        msg_name: &mut address as *mut _ as *mut c_void,
         msg_namelen: mem::size_of::<sockaddr_storage>() as socklen_t,
-        msg_iov: iov.as_ptr() as *const IoVec<&[u8]>, // safe cast to add const-ness
+        msg_iov: iov.as_mut_ptr(),
         msg_iovlen: iov.len() as type_of_msg_iovlen,
-        msg_control: msg_control as *const c_void,
+        msg_control: msg_control as *mut c_void,
         msg_controllen: msg_controllen as type_of_cmsg_len,
         msg_flags: 0,
     };
-    let ret = unsafe { ffi::recvmsg(fd, &mut mhdr, flags.bits()) };
+    let ret = unsafe { libc::recvmsg(fd, &mut mhdr, flags.bits()) };
 
     Ok(unsafe { RecvMsg {
         bytes: try!(Errno::result(ret)) as usize,
@@ -478,7 +494,7 @@ pub fn socket<T: Into<Option<SockProtocol>>>(domain: AddressFamily, ty: SockType
     }
 
     // TODO: Check the kernel version
-    let res = try!(Errno::result(unsafe { ffi::socket(domain as c_int, ty, protocol) }));
+    let res = try!(Errno::result(unsafe { libc::socket(domain as c_int, ty, protocol) }));
 
     #[cfg(any(target_os = "android",
               target_os = "dragonfly",
@@ -521,7 +537,7 @@ pub fn socketpair<T: Into<Option<SockProtocol>>>(domain: AddressFamily, ty: Sock
     }
     let mut fds = [-1, -1];
     let res = unsafe {
-        ffi::socketpair(domain as c_int, ty, protocol, fds.as_mut_ptr())
+        libc::socketpair(domain as c_int, ty, protocol, fds.as_mut_ptr())
     };
     try!(Errno::result(res));
 
@@ -554,7 +570,7 @@ pub fn socketpair<T: Into<Option<SockProtocol>>>(domain: AddressFamily, ty: Sock
 ///
 /// [Further reading](http://man7.org/linux/man-pages/man2/listen.2.html)
 pub fn listen(sockfd: RawFd, backlog: usize) -> Result<()> {
-    let res = unsafe { ffi::listen(sockfd, backlog as c_int) };
+    let res = unsafe { libc::listen(sockfd, backlog as c_int) };
 
     Errno::result(res).map(drop)
 }
@@ -566,7 +582,7 @@ pub fn listen(sockfd: RawFd, backlog: usize) -> Result<()> {
 pub fn bind(fd: RawFd, addr: &SockAddr) -> Result<()> {
     let res = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
-        ffi::bind(fd, ptr, len)
+        libc::bind(fd, ptr, len)
     };
 
     Errno::result(res).map(drop)
@@ -581,7 +597,7 @@ pub fn bind(fd: RawFd, addr: &SockAddr) -> Result<()> {
 pub fn bind(fd: RawFd, addr: &SockAddr) -> Result<()> {
     let res = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
-        ffi::bind(fd, ptr, len as c_int)
+        libc::bind(fd, ptr, len as c_int)
     };
 
     Errno::result(res).map(drop)
@@ -591,7 +607,7 @@ pub fn bind(fd: RawFd, addr: &SockAddr) -> Result<()> {
 ///
 /// [Further reading](http://man7.org/linux/man-pages/man2/accept.2.html)
 pub fn accept(sockfd: RawFd) -> Result<RawFd> {
-    let res = unsafe { ffi::accept(sockfd, ptr::null_mut(), ptr::null_mut()) };
+    let res = unsafe { libc::accept(sockfd, ptr::null_mut(), ptr::null_mut()) };
 
     Errno::result(res)
 }
@@ -605,7 +621,7 @@ pub fn accept4(sockfd: RawFd, flags: SockFlag) -> Result<RawFd> {
 
 #[inline]
 fn accept4_polyfill(sockfd: RawFd, flags: SockFlag) -> Result<RawFd> {
-    let res = try!(Errno::result(unsafe { ffi::accept(sockfd, ptr::null_mut(), ptr::null_mut()) }));
+    let res = try!(Errno::result(unsafe { libc::accept(sockfd, ptr::null_mut(), ptr::null_mut()) }));
 
     #[cfg(any(target_os = "android",
               target_os = "dragonfly",
@@ -647,7 +663,7 @@ fn accept4_polyfill(sockfd: RawFd, flags: SockFlag) -> Result<RawFd> {
 pub fn connect(fd: RawFd, addr: &SockAddr) -> Result<()> {
     let res = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
-        ffi::connect(fd, ptr, len)
+        libc::connect(fd, ptr, len)
     };
 
     Errno::result(res).map(drop)
@@ -659,7 +675,7 @@ pub fn connect(fd: RawFd, addr: &SockAddr) -> Result<()> {
 /// [Further reading](http://man7.org/linux/man-pages/man2/recv.2.html)
 pub fn recv(sockfd: RawFd, buf: &mut [u8], flags: MsgFlags) -> Result<usize> {
     unsafe {
-        let ret = ffi::recv(
+        let ret = libc::recv(
             sockfd,
             buf.as_ptr() as *mut c_void,
             buf.len() as size_t,
@@ -678,7 +694,7 @@ pub fn recvfrom(sockfd: RawFd, buf: &mut [u8]) -> Result<(usize, SockAddr)> {
         let addr: sockaddr_storage = mem::zeroed();
         let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
 
-        let ret = try!(Errno::result(ffi::recvfrom(
+        let ret = try!(Errno::result(libc::recvfrom(
             sockfd,
             buf.as_ptr() as *mut c_void,
             buf.len() as size_t,
@@ -694,7 +710,7 @@ pub fn recvfrom(sockfd: RawFd, buf: &mut [u8]) -> Result<(usize, SockAddr)> {
 pub fn sendto(fd: RawFd, buf: &[u8], addr: &SockAddr, flags: MsgFlags) -> Result<usize> {
     let ret = unsafe {
         let (ptr, len) = addr.as_ffi_pair();
-        ffi::sendto(fd, buf.as_ptr() as *const c_void, buf.len() as size_t, flags.bits(), ptr, len)
+        libc::sendto(fd, buf.as_ptr() as *const c_void, buf.len() as size_t, flags.bits(), ptr, len)
     };
 
     Errno::result(ret).map(|r| r as usize)
@@ -705,25 +721,10 @@ pub fn sendto(fd: RawFd, buf: &[u8], addr: &SockAddr, flags: MsgFlags) -> Result
 /// [Further reading](http://man7.org/linux/man-pages/man2/send.2.html)
 pub fn send(fd: RawFd, buf: &[u8], flags: MsgFlags) -> Result<usize> {
     let ret = unsafe {
-        ffi::send(fd, buf.as_ptr() as *const c_void, buf.len() as size_t, flags.bits())
+        libc::send(fd, buf.as_ptr() as *const c_void, buf.len() as size_t, flags.bits())
     };
 
     Errno::result(ret).map(|r| r as usize)
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug)]
-pub struct linger {
-    pub l_onoff: c_int,
-    pub l_linger: c_int
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub struct ucred {
-    pid: pid_t,
-    uid: uid_t,
-    gid: gid_t,
 }
 
 /*
@@ -787,7 +788,7 @@ pub fn getpeername(fd: RawFd) -> Result<SockAddr> {
         let addr: sockaddr_storage = mem::uninitialized();
         let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
 
-        let ret = ffi::getpeername(fd, mem::transmute(&addr), &mut len);
+        let ret = libc::getpeername(fd, mem::transmute(&addr), &mut len);
 
         try!(Errno::result(ret));
 
@@ -803,7 +804,7 @@ pub fn getsockname(fd: RawFd) -> Result<SockAddr> {
         let addr: sockaddr_storage = mem::uninitialized();
         let mut len = mem::size_of::<sockaddr_storage>() as socklen_t;
 
-        let ret = ffi::getsockname(fd, mem::transmute(&addr), &mut len);
+        let ret = libc::getsockname(fd, mem::transmute(&addr), &mut len);
 
         try!(Errno::result(ret));
 
