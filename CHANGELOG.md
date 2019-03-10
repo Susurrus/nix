@@ -23,6 +23,8 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 
   ioctl_read_bad!(tcgets, libc::TCGETS, libc::termios);
   ```
+- Implemented `Clone`, `Copy`, `Debug`, `Eq`, `Hash`, and `PartialEq` for most
+  types that support them. ([#1035](https://github.com/nix-rust/nix/pull/1035))
 
 ### Changed
 - Changed some public types from reexports of libc types like `uint32_t` to the

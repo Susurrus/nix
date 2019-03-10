@@ -80,7 +80,7 @@ libc_enum! {
 /// Return values for [`AioCb::cancel`](struct.AioCb.html#method.cancel) and
 /// [`aio_cancel_all`](fn.aio_cancel_all.html)
 #[repr(i32)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum AioCancelStat {
     /// All outstanding requests were canceled
     AioCanceled = libc::AIO_CANCELED,
@@ -133,6 +133,7 @@ impl<'a> Debug for Buffer<'a> {
 ///
 /// The basic structure used by all aio functions.  Each `AioCb` represents one
 /// I/O request.
+#[derive(Debug)]
 pub struct AioCb<'a> {
     aiocb: libc::aiocb,
     /// Tracks whether the buffer pointed to by `libc::aiocb.aio_buf` is mutable
@@ -1016,22 +1017,6 @@ pub fn aio_suspend(list: &[&AioCb], timeout: Option<TimeSpec>) -> Result<()> {
     Errno::result(unsafe {
         libc::aio_suspend(p, list.len() as i32, timep)
     }).map(drop)
-}
-
-impl<'a> Debug for AioCb<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("AioCb")
-            .field("aio_fildes", &self.aiocb.aio_fildes)
-            .field("aio_offset", &self.aiocb.aio_offset)
-            .field("aio_buf", &self.aiocb.aio_buf)
-            .field("aio_nbytes", &self.aiocb.aio_nbytes)
-            .field("aio_lio_opcode", &self.aiocb.aio_lio_opcode)
-            .field("aio_reqprio", &self.aiocb.aio_reqprio)
-            .field("aio_sigevent", &SigEvent::from(&self.aiocb.aio_sigevent))
-            .field("mutable", &self.mutable)
-            .field("in_progress", &self.in_progress)
-            .finish()
-    }
 }
 
 impl<'a> Drop for AioCb<'a> {
